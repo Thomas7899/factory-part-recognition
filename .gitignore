@@ -1,0 +1,35 @@
+# --- System & IDE ---
+.DS_Store
+.vscode/
+.idea/
+
+# --- Python & Environment ---
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# --- Datenbanken ---
+*.db
+*.sqlite3
+sql_app.db
+
+# --- Daten & Modelle ---
+# Wir wollen keine riesigen Datensätze oder Model-Weights hochladen
+data/
+models/*.pt
+models/*.pth
+# Falls du dein kleines Modell doch hochladen willst, 
+# entferne das # vor der nächsten Zeile und lösche die Zeilen darüber:
+# !models/factory_cnn.pt
+
+# --- Jupyter Notebooks ---
+.ipynb_checkpoints/
+
+# --- Runtime / Generierte Dateien ---
+# Ignoriere alle hochgeladenen Bilder im static Ordner...
+static/*
+# ...aber behalte den Ordner selbst und die .gitkeep Datei (falls vorhanden)
+!static/.gitkeep
+# Ignoriere die JSON Datenbank für Metadaten (falls noch vorhanden)
+static/metadata.json
