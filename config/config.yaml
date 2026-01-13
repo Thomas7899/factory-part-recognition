@@ -1,0 +1,102 @@
+# =========================================
+# Factory Part Recognition - Configuration
+# =========================================
+# Zentrale Konfigurationsdatei für reproduzierbare Experimente
+
+# --- Daten ---
+data:
+  root_dir: "data/car-parts-50"
+  train_dir: "train"
+  val_dir: "val"
+  test_dir: "test"
+  img_size: 224
+  num_workers: 4
+
+# --- Modell ---
+model:
+  architecture: "resnet18"  # resnet18, resnet34, resnet50, efficientnet_b0
+  pretrained: true
+  num_classes: 50
+  dropout_rate: 0.3
+  freeze_backbone: false  # True für schnelles Fine-Tuning
+
+# --- Training ---
+training:
+  epochs: 15
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  optimizer: "adamw"  # adam, adamw, sgd
+  scheduler: "cosine"  # step, cosine, plateau, none
+  scheduler_params:
+    step_size: 5
+    gamma: 0.1
+    patience: 3
+  early_stopping:
+    enabled: true
+    patience: 5
+    min_delta: 0.001
+
+# --- Augmentations ---
+augmentation:
+  train:
+    horizontal_flip: true
+    vertical_flip: false
+    rotation_degrees: 15
+    color_jitter:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.2
+      hue: 0.1
+    random_erasing: 0.1
+    gaussian_blur: 0.1
+  val:
+    # Keine Augmentations für Validation
+    normalize: true
+
+# --- Inferenz ---
+inference:
+  confidence_threshold: 0.7  # Minimum für sichere Vorhersage
+  reject_threshold: 0.5      # Unter diesem Wert: "Unbekannt/Unsicher"
+  batch_size: 16
+  enable_tta: false          # Test-Time Augmentation
+
+# --- Out-of-Distribution Detection ---
+ood:
+  enabled: true
+  max_softmax_threshold: 0.85
+  entropy_threshold: 1.5
+
+# --- Logging & Checkpoints ---
+logging:
+  log_dir: "logs"
+  save_frequency: 5  # Checkpoint alle N Epochen
+  tensorboard: true
+  wandb:
+    enabled: false
+    project: "factory-part-recognition"
+    entity: null
+
+# --- Modell-Versionierung ---
+model_registry:
+  save_dir: "models"
+  naming_template: "{architecture}_{timestamp}_acc{accuracy:.2f}"
+  keep_best_n: 3
+
+# --- API ---
+api:
+  host: "127.0.0.1"
+  port: 8000
+  max_file_size_mb: 10
+  allowed_extensions: [".jpg", ".jpeg", ".png", ".webp"]
+  rate_limit: 100  # Requests pro Minute
+
+# --- Hardware ---
+hardware:
+  device: "auto"  # auto, cuda, mps, cpu
+  mixed_precision: false
+  pin_memory: true
+
+# --- Reproduzierbarkeit ---
+seed: 42
+deterministic: true
