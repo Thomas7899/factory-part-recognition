@@ -1,17 +1,19 @@
 import os
 import shutil
 import torch
-import torch.nn as nn
 from fastapi import FastAPI, UploadFile, File, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from torchvision import models, transforms
 from PIL import Image
 from sqlalchemy import create_engine, Column, Integer, String, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
-# --- Datenbank Setup (SQLAlchemy) ---
+# Neue Imports
+from src.model import load_trained_model
+from src.augmentations import get_val_transforms
+from src.config_loader import get_device
+
 SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
 
 engine = create_engine(
@@ -36,7 +38,6 @@ def get_db():
     finally:
         db.close()
 
-# --- App Setup ---
 app = FastAPI()
 
 app.add_middleware(
@@ -50,56 +51,30 @@ app.add_middleware(
 os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# --- KI Setup ---
+# Klassen automatisch laden
 TRAIN_DIR = "data/car-parts-50/train"
-CLASSES = [
-    'AIR COMPRESSOR', 'ALTERNATOR', 'BATTERY', 'BRAKE CALIPER', 'BRAKE PAD',
-    'BRAKE ROTOR', 'CAMSHAFT', 'CARBERATOR', 'CLUTCH PLATE', 'COIL SPRING',
-    'CRANKSHAFT', 'CYLINDER HEAD', 'DISTRIBUTOR', 'ENGINE BLOCK', 'ENGINE VALVE',
-    'FUEL INJECTOR', 'FUSE BOX', 'GAS CAP', 'HEADLIGHTS', 'IDLER ARM',
-    'IGNITION COIL', 'INSTRUMENT CLUSTER', 'LEAF SPRING', 'LOWER CONTROL ARM',
-    'MUFFLER', 'OIL FILTER', 'OIL PAN', 'OIL PRESSURE SENSOR', 'OVERFLOW TANK',
-    'OXYGEN SENSOR', 'PISTON', 'PRESSURE PLATE', 'RADIATOR', 'RADIATOR FAN',
-    'RADIATOR HOSE', 'RADIO', 'RIM', 'SHIFT KNOB', 'SIDE MIRROR', 'SPARK PLUG',
-    'SPOILER', 'STARTER', 'TAILLIGHTS', 'THERMOSTAT', 'TORQUE CONVERTER',
-    'TRANSMISSION', 'VACUUM BRAKE BOOSTER', 'VALVE LIFTER', 'WATER PUMP',
-    'WINDOW REGULATOR'
-]
+FALLBACK_CLASSES = [f"Class_{i}" for i in range(50)]
+class_names = FALLBACK_CLASSES
 
 if os.path.exists(TRAIN_DIR):
-    try:
-        class_names = sorted([d for d in os.listdir(TRAIN_DIR) if os.path.isdir(os.path.join(TRAIN_DIR, d))])
-    except:
-        class_names = CLASSES
-else:
-    class_names = CLASSES
+    found = sorted([d.name for d in os.scandir(TRAIN_DIR) if d.is_dir()])
+    if found:
+        class_names = found
 
+# Setup Device & Model
+device = get_device()
 MODEL_PATH = "models/factory_cnn.pt"
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = None
 
-def load_model():
-    model = models.resnet18(weights=None)
-    num_ftrs = model.fc.in_features
-    model.fc = nn.Linear(num_ftrs, len(class_names))
-    
-    try:
-        state_dict = torch.load(MODEL_PATH, map_location=device)
-        model.load_state_dict(state_dict)
-        model = model.to(device)
-        model.eval()
-        print("✅ Modell erfolgreich geladen.")
-        return model
-    except Exception as e:
-        print(f"❌ Fehler beim Laden: {e}")
-        return None
+try:
+    print(f"Lade Modell auf {device}...")
+    model = load_trained_model(MODEL_PATH, device, len(class_names))
+    print("✅ Modell erfolgreich geladen (Neues Format).")
+except Exception as e:
+    print(f"❌ Fehler beim Laden des Modells: {e}")
 
-model = load_model()
-
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+# Transformation
+transform = get_val_transforms(224)
 
 def predict_image(image_path):
     if model is None:
@@ -119,15 +94,11 @@ def predict_image(image_path):
         print(f"Fehler bei Prediction: {e}")
         return "Fehler", 0.0
 
-# --- Endpoints ---
-
 @app.get("/images")
 def get_images(db: Session = Depends(get_db)):
-    # Lade alle Einträge aus der Datenbank
     records = db.query(ImageRecord).all()
     results = []
     
-    # Prüfe physisch vorhandene Dateien und matche sie mit DB-Einträgen
     if os.path.exists("static"):
         files = os.listdir("static")
         image_files = set(f for f in files if f.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')))
@@ -140,21 +111,18 @@ def get_images(db: Session = Depends(get_db)):
                     "prediction": record.prediction
                 })
                 
-    return results[::-1] # Neueste zuerst
+    return results[::-1]
 
 @app.post("/upload")
 async def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
     file_location = f"static/{file.filename}"
     
-    # 1. Datei speichern
     with open(file_location, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
-    # 2. KI Vorhersage
     label, score = predict_image(file_location)
     prediction_text = f"{label} ({score:.1%})"
     
-    # 3. Datenbank Update oder Insert
     existing_record = db.query(ImageRecord).filter(ImageRecord.filename == file.filename).first()
     
     if existing_record:

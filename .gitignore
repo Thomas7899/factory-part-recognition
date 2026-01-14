@@ -17,6 +17,7 @@ sql_app.db
 # --- Daten & Modelle ---
 # Wir wollen keine riesigen Datensätze oder Model-Weights hochladen
 data/
+data.zip
 models/*.pt
 models/*.pth
 # Falls du dein kleines Modell doch hochladen willst, 
